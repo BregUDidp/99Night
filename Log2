@@ -1,0 +1,77 @@
+-- เสี่ยโอนไวโหมด V2 (แก้บั๊ก position nil + ลากเข้าไฟจริง 100%)
+local Players = cloneref(game:GetService("Players"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local Workspace = cloneref(game:GetService("Workspace"))
+
+-- ====== ตั้งค่าจำนวนที่ต้องการ ======
+local itemLimit = {
+    ["Log"] = 10,
+    ["Chair"] = 10,
+}
+
+local offsetDistance = 0
+local delayBetweenItems = 0
+
+-- ====== เตรียมตัวละคร ======
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- ====== อ้างอิง ======
+local itemsFolder = Workspace:WaitForChild("Items")
+local remoteEvents = ReplicatedStorage:WaitForChild("RemoteEvents")
+local startDragging = remoteEvents:WaitForChild("RequestStartDraggingItem")
+local stopDragging = remoteEvents:WaitForChild("StopDraggingItem")
+
+-- ตำแหน่งกองไฟหลัก (Campground)
+local fireCenter = workspace:WaitForChild("Map"):WaitForChild("Campground"):WaitForChild("MainFire"):WaitForChild("Center")
+local targetPos = (fireCenter.CFrame * CFrame.new(0, 0, -offsetDistance)).Position
+
+-- ตัวนับ
+local draggedCount = {}
+for name,_ in pairs(itemLimit) do draggedCount[name] = 0 end
+
+local function canDragMore(name)
+    return itemLimit[name] and (draggedCount[name] or 0) < itemLimit[name]
+end
+
+-- ฟังก์ชันลาก (แก้บั๊กแล้ว)
+local function dragItem(item)
+    if not canDragMore(item.Name) then return end
+    
+    local cloned = cloneref(item)
+    startDragging:FireServer(cloned)
+    
+    task.spawn(function()
+        task.wait(0.03)
+        if cloned:IsA("BasePart") then
+            cloned.CFrame = CFrame.new(targetPos)
+        elseif cloned:IsA("Model") and cloned.PrimaryPart then
+            cloned:SetPrimaryPartCFrame(CFrame.new(targetPos))
+        end
+    end)
+    
+    task.wait(0.06)
+    stopDragging:FireServer(cloned)
+    
+    draggedCount[item.Name] = (draggedCount[item.Name] or 0) + 1
+    print(string.format("ลาก %s แล้ว (%d/%d)", item.Name, draggedCount[item.Name], itemLimit[item.Name]))
+end
+
+-- รันหลัก
+local function main()
+    print("เริ่มลากของเข้าไฟ...")
+    for _, item in ipairs(itemsFolder:GetChildren()) do
+        if itemLimit[item.Name] and canDragMore(item.Name) then
+            dragItem(item)
+            task.wait(delayBetweenItems)
+        end
+    end
+    
+    print("=== เสร็จแล้วจ้า ===")
+    for name, limit in pairs(itemLimit) do
+        print(name .. ": " .. (draggedCount[name] or 0) .. "/" .. limit)
+    end
+end
+
+main()
